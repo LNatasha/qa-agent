@@ -15,10 +15,8 @@ export async function searchWithGemini(query: string): Promise<string> {
 }
 
 export function detectConflicts(name: string, existingSlugs: string[]): string[] {
-  const normalized = name.toLowerCase().replace(/\s+/g, '-');
-  return existingSlugs.filter(
-    slug => slug === normalized || slug.includes(normalized) || normalized.includes(slug),
-  );
+  const normalized = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return existingSlugs.filter(slug => slug === normalized);
 }
 
 export async function generateVaultDraft(
@@ -71,7 +69,9 @@ Return ONLY the file content — no explanation before or after.`,
     ],
   });
 
-  return response.content[0]?.type === 'text' ? response.content[0].text : '';
+  const text = response.content[0]?.type === 'text' ? response.content[0].text : null;
+  if (!text) throw new Error('Claude returned no text content for vault draft generation');
+  return text;
 }
 
 function typeFromDraft(draft: string): VaultNodeType {
@@ -79,8 +79,8 @@ function typeFromDraft(draft: string): VaultNodeType {
     const { data } = matter(draft);
     const t = data['type'] as string;
     if (t === 'tool' || t === 'technique' || t === 'example') return t;
-  } catch {
-    /* fall through */
+  } catch (err) {
+    console.error('Failed to parse vault draft frontmatter:', err);
   }
   return 'tool';
 }
