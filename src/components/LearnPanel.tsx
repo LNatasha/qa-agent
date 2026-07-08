@@ -24,6 +24,12 @@ export function LearnPanel({ onClose }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), example: example.trim() }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Request failed' }));
+        setError(err.error ?? 'Request failed');
+        setPhase('form');
+        return;
+      }
       const data: LearnResponse = await res.json();
       setResult(data);
       setDraft(data.draft);
@@ -37,11 +43,16 @@ export function LearnPanel({ onClose }: Props) {
   async function save() {
     if (!result) return;
     try {
-      await fetch('/api/learn/save', {
+      const res = await fetch('/api/learn/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slug: result.slug, type: result.type, content: draft }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Save failed' }));
+        setError(err.error ?? 'Save failed');
+        return;
+      }
       setPhase('saved');
     } catch {
       setError('Save failed. Try again.');

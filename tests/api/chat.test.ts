@@ -12,6 +12,7 @@ vi.mock('@/api/vault.js', () => ({
       forEachNode: (cb: (slug: string, attrs: Record<string, unknown>) => void) => {
         nodes.forEach((attrs, slug) => cb(slug, attrs));
       },
+      hasNode: (slug: string) => nodes.has(slug),
       neighbors: (slug: string) => slug === 'boundary-value-analysis' ? ['playwright'] : [],
     };
   }),

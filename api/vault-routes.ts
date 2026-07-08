@@ -10,7 +10,12 @@ export default function buildVaultRoutes(vaultDir: string): Router {
   });
 
   router.get('/vault/:slug', (req, res) => {
-    const entry = getVaultEntry(vaultDir, req.params['slug'] as string);
+    const { slug } = req.params;
+    if (!/^[a-z0-9-]+$/.test(slug)) {
+      res.status(400).json({ error: 'Invalid slug' });
+      return;
+    }
+    const entry = getVaultEntry(vaultDir, slug);
     if (!entry) { res.status(404).json({ error: 'Not found' }); return; }
     res.json(entry);
   });

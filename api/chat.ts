@@ -17,7 +17,7 @@ export function buildGraphContext(step: Step, context: ChatContext): string {
     });
   }
 
-  if (step === 'tool' && context.technique) {
+  if (step === 'tool' && context.technique && graph.hasNode(context.technique)) {
     lines.push(`Available tools for technique "${context.technique}":`);
     const neighborSlugs = new Set(graph.neighbors(context.technique));
     graph.forEachNode((slug, attrs) => {

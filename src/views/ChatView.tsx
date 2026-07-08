@@ -41,6 +41,14 @@ export function ChatView({ model }: Props) {
       setMessages(prev => [...prev, { role: 'assistant', content: data.content }]);
       setReadyToAdvance(data.readyToAdvance);
       if (data.file) setFiles(prev => [...prev, data.file!]);
+      // Extract domain from conversation text and accumulate into context
+      if (!context.domain) {
+        const allText = [...newMessages, { role: 'assistant' as const, content: data.content }]
+          .map(m => m.content.toLowerCase())
+          .join(' ');
+        const found = (['web', 'api', 'mobile', 'performance'] as const).find(d => allText.includes(d));
+        if (found) setContext(prev => ({ ...prev, domain: found }));
+      }
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Something went wrong. Please try again.' }]);
     } finally {
