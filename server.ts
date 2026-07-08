@@ -1,13 +1,20 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
+import path from 'path';
 import dotenv from 'dotenv';
+import { initGraph } from './api/vault.js';
+import buildVaultRoutes from './api/vault-routes.js';
 
 dotenv.config({ path: '.env.local' });
 
 const app = express();
 const PORT = 3000;
+const VAULT_DIR = path.join(process.cwd(), 'vault');
 
 app.use(express.json());
+
+initGraph(VAULT_DIR);
+app.use('/api', buildVaultRoutes(VAULT_DIR));
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
