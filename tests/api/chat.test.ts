@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { buildGraphContext, buildSystemPrompt } from '@/api/chat.js';
 import type { ChatContext } from '@/src/types.js';
 

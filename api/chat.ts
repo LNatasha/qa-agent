@@ -54,7 +54,7 @@ Never advance to the next step without the user confirming.`;
 
 function detectReadyToAdvance(content: string): { clean: string; ready: boolean } {
   const ready = content.includes('READY_TO_ADVANCE');
-  return { clean: content.replace('READY_TO_ADVANCE', '').trim(), ready };
+  return { clean: content.replaceAll('READY_TO_ADVANCE', '').trim(), ready };
 }
 
 function slugify(text: string): string {
