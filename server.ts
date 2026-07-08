@@ -23,7 +23,20 @@ async function start() {
     app.use(express.static(distPath));
     app.get('*', (_req, res) => res.sendFile(path.default.join(distPath, 'index.html')));
   }
-  app.listen(PORT, '0.0.0.0', () => console.log(`QA Agent running on http://localhost:${PORT}`));
+  const server = app.listen(PORT, '0.0.0.0', () =>
+    console.log(`QA Agent running on http://localhost:${PORT}`)
+  );
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use`);
+    } else {
+      console.error('Server error:', err);
+    }
+    process.exit(1);
+  });
 }
 
-start();
+start().catch(err => {
+  console.error('Server startup failed:', err);
+  process.exit(1);
+});
