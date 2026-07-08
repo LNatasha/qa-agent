@@ -4,6 +4,7 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { initGraph } from './api/vault.js';
 import buildVaultRoutes from './api/vault-routes.js';
+import { getFile } from './api/files.js';
 
 dotenv.config({ path: '.env.local' });
 
@@ -15,6 +16,14 @@ app.use(express.json());
 
 initGraph(VAULT_DIR);
 app.use('/api', buildVaultRoutes(VAULT_DIR));
+
+app.get('/api/download/:id', (req, res) => {
+  const file = getFile(req.params['id'] as string);
+  if (!file) { res.status(404).json({ error: 'File not found' }); return; }
+  res.setHeader('Content-Type', file.contentType);
+  res.setHeader('Content-Disposition', `attachment; filename="${file.name}"`);
+  res.send(file.content);
+});
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
