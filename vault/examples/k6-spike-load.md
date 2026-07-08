@@ -1,6 +1,7 @@
 ---
 type: example
 name: k6 Spike Load Test
+domains: [performance]
 tags: [k6, performance, spike, load]
 ---
 

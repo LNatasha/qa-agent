@@ -1,6 +1,7 @@
 ---
 type: example
 name: Playwright Login Test
+domains: [web]
 tags: [playwright, e2e, login, typescript]
 ---
 
