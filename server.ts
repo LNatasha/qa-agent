@@ -4,6 +4,7 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { initGraph } from './api/vault.js';
 import buildVaultRoutes from './api/vault-routes.js';
+import buildChatRoutes from './api/chat-routes.js';
 import { getFile } from './api/files.js';
 
 dotenv.config({ path: '.env.local' });
@@ -16,6 +17,7 @@ app.use(express.json());
 
 initGraph(VAULT_DIR);
 app.use('/api', buildVaultRoutes(VAULT_DIR));
+app.use('/api', buildChatRoutes());
 
 app.get('/api/download/:id', (req, res) => {
   const file = getFile(req.params['id'] as string);
