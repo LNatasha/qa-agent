@@ -1,18 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { GoogleGenAI } from '@google/genai';
+import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { LearnRequest, LearnResponse, LearnSaveRequest, LearnSaveResponse, VaultNodeType } from '@/src/types.js';
 import { getVaultList, saveToVault, rebuildGraph } from './vault.js';
 import matter from 'gray-matter';
-
-export async function searchWithGemini(query: string): Promise<string> {
-  const genai = new GoogleGenAI({ apiKey: process.env['GEMINI_API_KEY']! });
-  const response = await genai.models.generateContent({
-    model: 'gemini-2.0-flash',
-    contents: `Find comprehensive information about "${query}" as a software testing tool or technique. Include: what it is, key strengths, when to use it, domains it covers (web/api/mobile/performance), language support, and comparisons to similar tools/techniques.`,
-    config: { tools: [{ googleSearch: {} }] },
-  });
-  return response.text ?? '';
-}
 
 export function detectConflicts(name: string, existingSlugs: string[]): string[] {
   const normalized = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -22,19 +11,15 @@ export function detectConflicts(name: string, existingSlugs: string[]): string[]
 export async function generateVaultDraft(
   name: string,
   example: string,
-  searchResult: string,
+  _searchContext: string,
   existingSlugs: string[],
 ): Promise<string> {
-  const client = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY']! });
   const existingLinks = existingSlugs.map(s => `[[${s}]]`).join(', ');
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 2000,
-    messages: [
-      {
-        role: 'user',
-        content: `Create an Obsidian vault .md file for "${name}" using EXACTLY this format:
+  let latestText = '';
+
+  for await (const msg of query({
+    prompt: `Research "${name}" as a software testing tool or technique using web search. Then create an Obsidian vault .md file using EXACTLY this format:
 
 ---
 type: [tool or technique]
@@ -61,17 +46,23 @@ tags: [3-5 relevant lowercase tags]
 ---
 User-provided example: ${example}
 
-Research context:
-${searchResult}
-
 Return ONLY the file content — no explanation before or after.`,
-      },
-    ],
-  });
+    options: {
+      systemPrompt: 'You are a QA knowledge base assistant. Research testing tools and techniques using web search, then generate structured Obsidian vault entries.',
+      tools: ['WebSearch', 'WebFetch'],
+      maxTurns: 5,
+    },
+  })) {
+    if (msg.type === 'assistant') {
+      if (msg.error) throw new Error(`Claude error: ${msg.error}`);
+      for (const block of msg.message?.content ?? []) {
+        if (block.type === 'text') latestText = (block as { type: 'text'; text: string }).text;
+      }
+    }
+  }
 
-  const text = response.content[0]?.type === 'text' ? response.content[0].text : null;
-  if (!text) throw new Error('Claude returned no text content for vault draft generation');
-  return text;
+  if (!latestText) throw new Error('Claude returned no text content for vault draft generation');
+  return latestText;
 }
 
 function typeFromDraft(draft: string): VaultNodeType {
@@ -94,10 +85,7 @@ export async function handleLearn(req: LearnRequest, vaultDir?: string): Promise
   const existingEntries = getVaultList(dir);
   const existingSlugs = existingEntries.map(e => e.slug);
   const conflicts = detectConflicts(req.name, existingSlugs);
-  const searchResult = await searchWithGemini(
-    req.name + (req.clarifications ? ` — ${req.clarifications}` : ''),
-  );
-  const draft = await generateVaultDraft(req.name, req.example, searchResult, existingSlugs);
+  const draft = await generateVaultDraft(req.name, req.example, req.clarifications ?? '', existingSlugs);
   const type = typeFromDraft(draft);
   const slug = slugFromName(req.name);
   return { draft, slug, type, conflicts };

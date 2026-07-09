@@ -1,4 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { query } from '@anthropic-ai/claude-agent-sdk';
+import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { getGraph } from './vault.js';
 import { storeFile } from './files.js';
 import type { Step, ChatContext, ChatRequest, ChatResponse } from '@/src/types.js';
@@ -67,18 +68,32 @@ function getCodeExtension(tool: string): string {
 }
 
 export async function handleChat(req: ChatRequest): Promise<ChatResponse> {
-  const client = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY'] });
   const graphContext = buildGraphContext(req.step, req.context);
   const systemPrompt = buildSystemPrompt(req.step, graphContext);
 
-  const response = await client.messages.create({
-    model: req.model,
-    max_tokens: req.step === 'code' ? 4096 : 1024,
-    system: systemPrompt,
-    messages: req.messages.map(m => ({ role: m.role, content: m.content })),
-  });
+  async function* messageStream(): AsyncIterable<SDKUserMessage> {
+    for (let i = 0; i < req.messages.length - 1; i++) {
+      const m = req.messages[i];
+      yield { type: 'user', message: { role: m.role as 'user' | 'assistant', content: m.content }, parent_tool_use_id: null, shouldQuery: false };
+    }
+    const last = req.messages[req.messages.length - 1];
+    yield { type: 'user', message: { role: last.role as 'user' | 'assistant', content: last.content }, parent_tool_use_id: null };
+  }
 
-  const raw = response.content[0]?.type === 'text' ? response.content[0].text : '';
+  const prompt = req.messages.length === 1 ? req.messages[0].content : messageStream();
+
+  let raw = '';
+  for await (const msg of query({ prompt, options: { systemPrompt, maxTurns: 1, tools: [] } })) {
+    if (msg.type === 'assistant') {
+      if (msg.error) throw new Error(`Claude error: ${msg.error}`);
+      for (const block of msg.message?.content ?? []) {
+        if (block.type === 'text') raw += (block as { type: 'text'; text: string }).text;
+      }
+    }
+  }
+
+  if (!raw) throw new Error('No response from Claude');
+
   const { clean, ready } = detectReadyToAdvance(raw);
 
   let file: { id: string; name: string } | undefined;

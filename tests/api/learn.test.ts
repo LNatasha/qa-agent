@@ -1,22 +1,28 @@
 import { describe, it, expect, vi } from 'vitest';
 import { detectConflicts, generateVaultDraft } from '@/api/learn.js';
 
-vi.mock('@anthropic-ai/sdk', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    messages: {
-      create: vi.fn().mockResolvedValue({
-        content: [{ type: 'text', text: '---\ntype: tool\nname: Cypress\ndomains: [web]\ntags: [e2e]\n---\nCypress body.' }],
-      }),
-    },
-  })),
+vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
+  query: vi.fn().mockImplementation(() => {
+    async function* gen() {
+      yield {
+        type: 'assistant',
+        message: {
+          content: [{ type: 'text', text: '---\ntype: tool\nname: Cypress\ndomains: [web]\ntags: [e2e]\n---\nCypress body.' }],
+        },
+        parent_tool_use_id: null,
+        uuid: 'test-uuid',
+        session_id: 'test-session',
+        error: undefined,
+      };
+    }
+    return gen();
+  }),
 }));
 
-vi.mock('@google/genai', () => ({
-  GoogleGenAI: vi.fn().mockImplementation(() => ({
-    models: {
-      generateContent: vi.fn().mockResolvedValue({ text: 'Cypress is a JS testing framework.' }),
-    },
-  })),
+vi.mock('@/api/vault.js', () => ({
+  getVaultList: vi.fn(() => []),
+  saveToVault: vi.fn(() => '/vault/tools/cypress.md'),
+  rebuildGraph: vi.fn(),
 }));
 
 describe('detectConflicts', () => {
