@@ -1,5 +1,4 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { getGraph } from './vault.js';
 import { storeFile } from './files.js';
 import type { Step, ChatContext, ChatRequest, ChatResponse } from '@/src/types.js';
@@ -67,20 +66,22 @@ function getCodeExtension(tool: string): string {
   return ext[tool] ?? 'ts';
 }
 
+function buildPrompt(messages: ChatRequest['messages']): string {
+  if (messages.length === 1) return messages[0].content;
+  const history = messages.slice(0, -1)
+    .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+    .join('\n\n');
+  return `${history}\n\nUser: ${messages[messages.length - 1].content}`;
+}
+
+function stripCodeFences(content: string): string {
+  return content.replace(/^```[\w]*\n([\s\S]*?)\n```$/m, '$1').trim();
+}
+
 export async function handleChat(req: ChatRequest): Promise<ChatResponse> {
   const graphContext = buildGraphContext(req.step, req.context);
   const systemPrompt = buildSystemPrompt(req.step, graphContext);
-
-  async function* messageStream(): AsyncIterable<SDKUserMessage> {
-    for (let i = 0; i < req.messages.length - 1; i++) {
-      const m = req.messages[i];
-      yield { type: 'user', message: { role: m.role as 'user' | 'assistant', content: m.content }, parent_tool_use_id: null, shouldQuery: false };
-    }
-    const last = req.messages[req.messages.length - 1];
-    yield { type: 'user', message: { role: last.role as 'user' | 'assistant', content: last.content }, parent_tool_use_id: null };
-  }
-
-  const prompt = req.messages.length === 1 ? req.messages[0].content : messageStream();
+  const prompt = buildPrompt(req.messages);
 
   let raw = '';
   for await (const msg of query({ prompt, options: { systemPrompt, maxTurns: 1, tools: [] } })) {
@@ -107,7 +108,7 @@ export async function handleChat(req: ChatRequest): Promise<ChatResponse> {
   if (req.step === 'code' && req.context.tool) {
     const ext = getCodeExtension(req.context.tool);
     const name = `tests.${ext}`;
-    const id = storeFile(name, clean, 'text/plain');
+    const id = storeFile(name, stripCodeFences(clean), 'text/plain');
     file = { id, name };
   }
 
