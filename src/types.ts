@@ -53,6 +53,7 @@ export interface ChatResponse {
   content: string;
   readyToAdvance: boolean;
   file?: { id: string; name: string };
+  suggestedContext?: Partial<ChatContext>;
 }
 
 // Learn

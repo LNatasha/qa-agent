@@ -41,7 +41,9 @@ export function ChatView({ model }: Props) {
       setMessages(prev => [...prev, { role: 'assistant', content: data.content }]);
       setReadyToAdvance(data.readyToAdvance);
       if (data.file) setFiles(prev => [...prev, data.file!]);
-      // Extract domain from conversation text and accumulate into context
+      // Apply backend-detected technique/tool slug into context
+      if (data.suggestedContext) setContext(prev => ({ ...prev, ...data.suggestedContext }));
+      // Infer domain from conversation text if not yet known
       if (!context.domain) {
         const allText = [...newMessages, { role: 'assistant' as const, content: data.content }]
           .map(m => m.content.toLowerCase())

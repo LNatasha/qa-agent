@@ -31,6 +31,7 @@ vi.mock('@/api/vault.js', () => ({
   getVaultList: vi.fn(() => []),
   saveToVault: vi.fn(() => '/vault/tools/cypress.md'),
   rebuildGraph: vi.fn(),
+  slugify: (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
 }));
 
 describe('detectConflicts', () => {

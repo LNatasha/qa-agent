@@ -1,5 +1,5 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import { getGraph } from './vault.js';
+import { getGraph, slugify } from './vault.js';
 import { storeFile } from './files.js';
 import type { Step, ChatContext, ChatRequest, ChatResponse } from '@/src/types.js';
 
@@ -57,25 +57,25 @@ function detectReadyToAdvance(content: string): { clean: string; ready: boolean 
   return { clean: content.replaceAll('READY_TO_ADVANCE', '').trim(), ready };
 }
 
-function slugify(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-}
-
 function getCodeExtension(tool: string): string {
   const ext: Record<string, string> = { playwright: 'ts', appium: 'ts', k6: 'js', postman: 'json', detox: 'ts' };
   return ext[tool] ?? 'ts';
 }
 
 function buildPrompt(messages: ChatRequest['messages']): string {
-  if (messages.length === 1) return messages[0].content;
-  const history = messages.slice(0, -1)
+  // Skip any leading assistant messages (e.g. the initial greeting) — they are not real prior turns
+  const firstUserIdx = messages.findIndex(m => m.role === 'user');
+  if (firstUserIdx === -1) return '';
+  const relevant = messages.slice(firstUserIdx);
+  if (relevant.length === 1) return relevant[0]!.content;
+  const history = relevant.slice(0, -1)
     .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
     .join('\n\n');
-  return `${history}\n\nUser: ${messages[messages.length - 1].content}`;
+  return `${history}\n\nUser: ${relevant[relevant.length - 1]!.content}`;
 }
 
 function stripCodeFences(content: string): string {
-  return content.replace(/^```[\w]*\n([\s\S]*?)\n```$/m, '$1').trim();
+  return content.replace(/^```[\w]*\n([\s\S]*?)\n```$/, '$1').trim();
 }
 
 export async function handleChat(req: ChatRequest): Promise<ChatResponse> {
@@ -100,7 +100,8 @@ export async function handleChat(req: ChatRequest): Promise<ChatResponse> {
   let file: { id: string; name: string } | undefined;
 
   if (req.step === 'test-cases') {
-    const problemSlug = slugify(req.messages[0]?.content.slice(0, 40) ?? 'test-cases');
+    const firstUserMsg = req.messages.find(m => m.role === 'user');
+    const problemSlug = slugify((firstUserMsg?.content ?? 'test-cases').slice(0, 40));
     const id = storeFile(`test-cases-${problemSlug}.md`, `# Test Cases\n\n${clean}`, 'text/markdown');
     file = { id, name: `test-cases-${problemSlug}.md` };
   }
@@ -112,5 +113,22 @@ export async function handleChat(req: ChatRequest): Promise<ChatResponse> {
     file = { id, name };
   }
 
-  return { content: clean, readyToAdvance: ready, file };
+  // Detect which technique/tool slug Claude referenced so the frontend can update context
+  let suggestedContext: import('@/src/types.js').ChatContext | undefined;
+  if (req.step === 'technique' || req.step === 'tool') {
+    const graph = getGraph();
+    const nodeType = req.step === 'technique' ? 'technique' : 'tool';
+    const cleanLower = clean.toLowerCase();
+    let detected: string | undefined;
+    graph.forEachNode((slug, attrs) => {
+      if (detected) return;
+      const a = attrs as { type: string };
+      if (a.type === nodeType && cleanLower.includes(slug)) detected = slug;
+    });
+    if (detected) {
+      suggestedContext = req.step === 'technique' ? { technique: detected } : { tool: detected };
+    }
+  }
+
+  return { content: clean, readyToAdvance: ready, file, suggestedContext };
 }

@@ -1,12 +1,19 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { GoogleGenAI } from '@google/genai';
 import type { LearnRequest, LearnResponse, LearnSaveRequest, LearnSaveResponse, VaultNodeType } from '@/src/types.js';
-import { getVaultList, saveToVault, rebuildGraph } from './vault.js';
+import { getVaultList, saveToVault, rebuildGraph, slugify } from './vault.js';
 import matter from 'gray-matter';
 
+let _genai: GoogleGenAI | undefined;
+function getGenai(): GoogleGenAI {
+  const key = process.env['GEMINI_API_KEY'];
+  if (!key) throw new Error('GEMINI_API_KEY is not set in environment');
+  if (!_genai) _genai = new GoogleGenAI({ apiKey: key });
+  return _genai;
+}
+
 export async function searchWithGemini(searchQuery: string): Promise<string> {
-  const genai = new GoogleGenAI({ apiKey: process.env['GEMINI_API_KEY']! });
-  const response = await genai.models.generateContent({
+  const response = await getGenai().models.generateContent({
     model: 'gemini-2.0-flash',
     contents: `Find comprehensive information about "${searchQuery}" as a software testing tool or technique. Include: what it is, key strengths, when to use it, domains it covers (web/api/mobile/performance), language support, and comparisons to similar tools/techniques.`,
     config: { tools: [{ googleSearch: {} }] },
@@ -15,7 +22,7 @@ export async function searchWithGemini(searchQuery: string): Promise<string> {
 }
 
 export function detectConflicts(name: string, existingSlugs: string[]): string[] {
-  const normalized = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const normalized = slugify(name);
   return existingSlugs.filter(slug => slug === normalized);
 }
 
@@ -70,7 +77,7 @@ Return ONLY the file content — no explanation before or after.`,
     if (msg.type === 'assistant') {
       if (msg.error) throw new Error(`Claude error: ${msg.error}`);
       for (const block of msg.message?.content ?? []) {
-        if (block.type === 'text') latestText = (block as { type: 'text'; text: string }).text;
+        if (block.type === 'text') latestText += (block as { type: 'text'; text: string }).text;
       }
     }
   }
@@ -90,10 +97,6 @@ function typeFromDraft(draft: string): VaultNodeType {
   return 'tool';
 }
 
-function slugFromName(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-}
-
 export async function handleLearn(req: LearnRequest, vaultDir?: string): Promise<LearnResponse> {
   const dir = vaultDir ?? process.cwd() + '/vault';
   const existingEntries = getVaultList(dir);
@@ -102,7 +105,7 @@ export async function handleLearn(req: LearnRequest, vaultDir?: string): Promise
   const searchResult = await searchWithGemini(req.name + (req.clarifications ? ` — ${req.clarifications}` : ''));
   const draft = await generateVaultDraft(req.name, req.example, searchResult, existingSlugs);
   const type = typeFromDraft(draft);
-  const slug = slugFromName(req.name);
+  const slug = slugify(req.name);
   return { draft, slug, type, conflicts };
 }
 

@@ -21,9 +21,13 @@ export function parseVaultFile(filePath: string): VaultNode {
   };
 }
 
+export function slugify(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
 export function extractWikilinks(content: string): string[] {
   const matches = [...content.matchAll(/\[\[([^\]]+)\]\]/g)];
-  return matches.map(m => (m[1] as string).toLowerCase().replace(/\s+/g, '-'));
+  return matches.map(m => slugify(m[1] as string));
 }
 
 function readSubfolder(dir: string): VaultNode[] {
