@@ -1,7 +1,18 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import { GoogleGenAI } from '@google/genai';
 import type { LearnRequest, LearnResponse, LearnSaveRequest, LearnSaveResponse, VaultNodeType } from '@/src/types.js';
 import { getVaultList, saveToVault, rebuildGraph } from './vault.js';
 import matter from 'gray-matter';
+
+export async function searchWithGemini(searchQuery: string): Promise<string> {
+  const genai = new GoogleGenAI({ apiKey: process.env['GEMINI_API_KEY']! });
+  const response = await genai.models.generateContent({
+    model: 'gemini-2.0-flash',
+    contents: `Find comprehensive information about "${searchQuery}" as a software testing tool or technique. Include: what it is, key strengths, when to use it, domains it covers (web/api/mobile/performance), language support, and comparisons to similar tools/techniques.`,
+    config: { tools: [{ googleSearch: {} }] },
+  });
+  return response.text ?? '';
+}
 
 export function detectConflicts(name: string, existingSlugs: string[]): string[] {
   const normalized = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -11,7 +22,7 @@ export function detectConflicts(name: string, existingSlugs: string[]): string[]
 export async function generateVaultDraft(
   name: string,
   example: string,
-  _searchContext: string,
+  searchResult: string,
   existingSlugs: string[],
 ): Promise<string> {
   const existingLinks = existingSlugs.map(s => `[[${s}]]`).join(', ');
@@ -19,7 +30,7 @@ export async function generateVaultDraft(
   let latestText = '';
 
   for await (const msg of query({
-    prompt: `Research "${name}" as a software testing tool or technique using web search. Then create an Obsidian vault .md file using EXACTLY this format:
+    prompt: `Create an Obsidian vault .md file for "${name}" using EXACTLY this format:
 
 ---
 type: [tool or technique]
@@ -46,11 +57,14 @@ tags: [3-5 relevant lowercase tags]
 ---
 User-provided example: ${example}
 
+Research context (from Gemini web search):
+${searchResult}
+
 Return ONLY the file content — no explanation before or after.`,
     options: {
-      systemPrompt: 'You are a QA knowledge base assistant. Research testing tools and techniques using web search, then generate structured Obsidian vault entries.',
-      tools: ['WebSearch', 'WebFetch'],
-      maxTurns: 5,
+      systemPrompt: 'You are a QA knowledge base assistant. Generate structured Obsidian vault entries based on the provided research context and user example.',
+      tools: [],
+      maxTurns: 1,
     },
   })) {
     if (msg.type === 'assistant') {
@@ -85,7 +99,8 @@ export async function handleLearn(req: LearnRequest, vaultDir?: string): Promise
   const existingEntries = getVaultList(dir);
   const existingSlugs = existingEntries.map(e => e.slug);
   const conflicts = detectConflicts(req.name, existingSlugs);
-  const draft = await generateVaultDraft(req.name, req.example, req.clarifications ?? '', existingSlugs);
+  const searchResult = await searchWithGemini(req.name + (req.clarifications ? ` — ${req.clarifications}` : ''));
+  const draft = await generateVaultDraft(req.name, req.example, searchResult, existingSlugs);
   const type = typeFromDraft(draft);
   const slug = slugFromName(req.name);
   return { draft, slug, type, conflicts };

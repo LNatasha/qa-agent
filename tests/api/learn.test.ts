@@ -1,6 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import { detectConflicts, generateVaultDraft } from '@/api/learn.js';
 
+vi.mock('@google/genai', () => ({
+  GoogleGenAI: vi.fn().mockImplementation(() => ({
+    models: {
+      generateContent: vi.fn().mockResolvedValue({ text: 'Cypress is a JS testing framework.' }),
+    },
+  })),
+}));
+
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: vi.fn().mockImplementation(() => {
     async function* gen() {
