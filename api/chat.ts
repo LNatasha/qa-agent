@@ -122,8 +122,11 @@ export async function handleChat(req: ChatRequest): Promise<ChatResponse> {
     let detected: string | undefined;
     graph.forEachNode((slug, attrs) => {
       if (detected) return;
-      const a = attrs as { type: string };
-      if (a.type === nodeType && cleanLower.includes(slug)) detected = slug;
+      const a = attrs as { type: string; name: string };
+      // Match by human-readable name (what Claude writes) or by slug
+      if (a.type === nodeType && (cleanLower.includes(a.name.toLowerCase()) || cleanLower.includes(slug))) {
+        detected = slug;
+      }
     });
     if (detected) {
       suggestedContext = req.step === 'technique' ? { technique: detected } : { tool: detected };
